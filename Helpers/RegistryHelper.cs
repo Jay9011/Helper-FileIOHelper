@@ -1,30 +1,51 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
+using Microsoft.Win32;
 
 namespace FileIOHelper.Helpers
 {
-    public class IniFileHelper : IIOHelper
+    public class RegistryHelper : IIOHelper
     {
-        private readonly string _filePath;
+        private readonly string _registryPath;
+        private readonly RegistryKey _baseKey;
         private readonly Dictionary<string, Dictionary<string, string>> _cache; // 캐시 <섹션, <키, 값>>
         private readonly object _lock = new object();
-        
-        public IniFileHelper(string filePath)
+
+        public RegistryHelper(string registryPath, RegistryHive hive = RegistryHive.CurrentUser)
         {
-            _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
+            _registryPath = registryPath ?? throw new System.ArgumentNullException(nameof(registryPath));
             _cache = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+            
+            switch (hive)
+            {
+                case RegistryHive.ClassesRoot:
+                    _baseKey = Registry.ClassesRoot;
+                    break;
+                case RegistryHive.CurrentUser:
+                    _baseKey = Registry.CurrentUser;
+                    break;
+                case RegistryHive.LocalMachine:
+                    _baseKey = Registry.LocalMachine;
+                    break;
+                case RegistryHive.Users:
+                    _baseKey = Registry.Users;
+                    break;
+                case RegistryHive.PerformanceData:
+                    _baseKey = Registry.PerformanceData;
+                    break;
+                case RegistryHive.CurrentConfig:
+                    _baseKey = Registry.CurrentConfig;
+                    break;
+                default:
+                    _baseKey = Registry.CurrentUser;
+                    break;
+            }
         }
-        
+
+
         public string ReadValue(string section, string key, string defaultValue = "")
         {
-            if (!IsExists(_filePath))
-            {
-                throw new FileNotFoundException(_filePath);
-            }
-            
             if (string.IsNullOrEmpty(section) || string.IsNullOrEmpty(key))
             {
                 return defaultValue;
@@ -37,13 +58,17 @@ namespace FileIOHelper.Helpers
                     return cacheValue;
                 }
                 
-                StringBuilder buffer = new StringBuilder(255);
-                int bytesRead = GetPrivateProfileString(section, key, defaultValue, buffer, 255, _filePath);
-                string value = buffer.ToString();
-                
-                SaveCache(section, key, value);
-                
-                return value;
+                using (var regKey = _baseKey.OpenSubKey($"{_registryPath}\\{section}"))
+                {
+                    if (regKey == null)
+                    {
+                        return defaultValue;
+                    }
+                    
+                    var value = regKey.GetValue(key, defaultValue)?.ToString();
+                    SaveCache(section, key, value);
+                    return value;
+                }
             }
         }
 
@@ -56,18 +81,16 @@ namespace FileIOHelper.Helpers
             
             lock (_lock)
             {
-                WritePrivateProfileString(section, key, value, _filePath);
-                DeleteCacheKey(section, key);
+                using (var regKey = _baseKey.CreateSubKey($"{_registryPath}\\{section}"))
+                {
+                    regKey?.SetValue(key, value);
+                    DeleteCacheKey(section, key);
+                }
             }
         }
-        
+
         public Dictionary<string, string> ReadSection(string section)
         {
-            if (!IsExists(_filePath))
-            {
-                throw new FileNotFoundException(_filePath);
-            }
-            
             if (string.IsNullOrEmpty(section))
             {
                 return new Dictionary<string, string>();
@@ -77,35 +100,29 @@ namespace FileIOHelper.Helpers
             {
                 if (_cache.TryGetValue(section, out var sectionCache))
                 {
-                    // 섹션 캐시의 키가 비어있지 않다면 캐시 반환
                     if (sectionCache.Count > 0)
                     {
                         return sectionCache;
                     }
                 }
 
-                byte[] buffer = new byte[2048];
-                int byteRead = GetPrivateProfileString(section, null, null, buffer, 2048, _filePath);
-                
-                if (byteRead == 0)
+                using (var regKey = _baseKey.OpenSubKey($"{_registryPath}\\{section}"))
                 {
-                    throw new KeyNotFoundException($"{section} 섹션을 찾을 수 없습니다.");
-                }
-                
-                string rawString = Encoding.Unicode.GetString(buffer, 0, byteRead * 2);
-                string[] keys = rawString.Split('\0');
-                
-                foreach (var key in keys)
-                {
-                    if (string.IsNullOrEmpty(key))
+                    if (regKey == null)
                     {
-                        continue;
+                        throw new KeyNotFoundException($"{section} is not found.");
+                    }
+
+                    var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var valueName in regKey.GetValueNames())
+                    {
+                        var value = regKey.GetValue(valueName)?.ToString() ?? string.Empty;
+                        values.Add(valueName, value);
+                        SaveCache(section, valueName, value);
                     }
                     
-                    string value = ReadValue(section, key);
+                    return values;
                 }
-                
-                return _cache[section];
             }
         }
 
@@ -115,12 +132,17 @@ namespace FileIOHelper.Helpers
             {
                 return;
             }
-
+            
             lock (_lock)
             {
-                foreach (var pair in pairs)
+                using (var regKey = _baseKey.CreateSubKey($"{_registryPath}\\{section}"))
                 {
-                    WriteValue(section, pair.Key, pair.Value);
+                    foreach (var pair in pairs)
+                    {
+                        regKey?.SetValue(pair.Key, pair.Value);
+                    }
+
+                    DeleteCacheKey(section);
                 }
             }
         }
@@ -129,10 +151,20 @@ namespace FileIOHelper.Helpers
         {
             if (string.IsNullOrEmpty(path))
             {
-                path = _filePath;
+                path = _registryPath;
             }
-            
-            return File.Exists(path);
+
+            try
+            {
+                using (var regKey = _baseKey.OpenSubKey(path))
+                {
+                    return regKey != null;
+                }
+            }
+            catch (Exception e)
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -147,55 +179,39 @@ namespace FileIOHelper.Helpers
         {
             if (string.IsNullOrEmpty(path))
             {
-                path = _filePath;
+                path = _registryPath;
             }
-            string directory = Path.GetDirectoryName(path);
-            if (string.IsNullOrEmpty(directory))
+
+            string parentPath = Path.GetDirectoryName(path)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(parentPath))
             {
                 throw new ArgumentException("path is invalid.");
             }
-            
-            // 디렉토리 권한 체크
+
             if (access.HasFlag(FileAccess.Write))
             {
-                if (!Directory.Exists(directory))
+                using (var regKey = _baseKey.CreateSubKey(path))
                 {
-                    Directory.CreateDirectory(directory);
+                    if (regKey == null)
+                    {
+                        throw new UnauthorizedAccessException("No write permission or path does not exist.");
+                    }
+                    
+                    string testValueName = $"_test_{Guid.NewGuid()}";
+                    regKey.SetValue(testValueName, string.Empty);
+                    regKey.DeleteValue(testValueName, false);
                 }
-                
-                // 디렉토리에 쓰기 권한이 있는지 확인
-                string testFile = Path.Combine(directory, Path.GetRandomFileName());
-                File.WriteAllText(testFile, string.Empty);
-                File.Delete(testFile);
             }
             
-            // 파일 권한 테스트
-            if (access.HasFlag(FileAccess.Write) || access.HasFlag(FileAccess.Read))
+            if (access.HasFlag(FileAccess.Read))
             {
-                if (File.Exists(path))
+                // path가 존재하지 않는 경우 경로 생성
+                using (var regKey = _baseKey.OpenSubKey(path))
                 {
-                    if (access.HasFlag(FileAccess.Read))
+                    if (regKey == null
+                        && !access.HasFlag(FileAccess.Write))
                     {
-                        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read))
-                        {
-                            // 파일에 읽기 권한이 있는지 확인
-                        }
-                    }
-
-                    if (access.HasFlag(FileAccess.Write))
-                    {
-                        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Write))
-                        {
-                            // 파일에 쓰기 권한이 있는지 확인
-                        }
-                    }
-                }
-                else
-                {
-                    if (access.HasFlag(FileAccess.Write))
-                    {
-                        File.WriteAllText(path, string.Empty);
-                        File.Delete(path);
+                        throw new UnauthorizedAccessException("No read permission or path does not exist.");
                     }
                 }
             }
@@ -273,17 +289,5 @@ namespace FileIOHelper.Helpers
 
             return true;
         }
-        
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern int GetPrivateProfileSection(string section, byte[] keyValue, int size, string fileName);
-        
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern int GetPrivateProfileString(string section, string key, string def, byte[] retVal, int size, string fileName);
-        
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern int GetPrivateProfileString(string section, string key, string def, StringBuilder retVal, int size, string fileName);
-        
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern bool WritePrivateProfileString(string section, string key, string val, string fileName);
     }
 }
