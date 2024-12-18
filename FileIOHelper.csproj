@@ -7,13 +7,13 @@
     <Title>$(AssemblyName)</Title>
     <AssemblyVersion>$(VersionPrefix)</AssemblyVersion>
     <FileVersion>$(VersionPrefix)</FileVersion>
-    <Version>1.0.0-beta</Version>
+    <Version>1.0.0</Version>
     <Company>SECUiDEA</Company>
     <Description>ini와 registry에 데이터를 읽고 쓸수 있게 해주는 도구</Description>
     <PackageReadmeFile>ReadMe.md</PackageReadmeFile>
     <RepositoryUrl>http://192.168.0.39/FileIOHelper.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>ini, registry 작성 기능</PackageReleaseNotes>
+    <PackageReleaseNotes>캐시 기능 제거. (파일 변경시 해당 파일 변경 내용 적용)</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

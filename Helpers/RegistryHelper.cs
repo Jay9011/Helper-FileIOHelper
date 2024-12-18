@@ -9,13 +9,11 @@ namespace FileIOHelper.Helpers
     {
         private readonly string _registryPath;
         private readonly RegistryKey _baseKey;
-        private readonly Dictionary<string, Dictionary<string, string>> _cache; // 캐시 <섹션, <키, 값>>
         private readonly object _lock = new object();
 
         public RegistryHelper(string registryPath, RegistryHive hive = RegistryHive.CurrentUser)
         {
             _registryPath = registryPath ?? throw new System.ArgumentNullException(nameof(registryPath));
-            _cache = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
             
             switch (hive)
             {
@@ -53,11 +51,6 @@ namespace FileIOHelper.Helpers
 
             lock (_lock)
             {
-                if (LoadCache(section, key) is string cacheValue)
-                {
-                    return cacheValue;
-                }
-                
                 using (var regKey = _baseKey.OpenSubKey($"{_registryPath}\\{section}"))
                 {
                     if (regKey == null)
@@ -65,9 +58,7 @@ namespace FileIOHelper.Helpers
                         return defaultValue;
                     }
                     
-                    var value = regKey.GetValue(key, defaultValue)?.ToString();
-                    SaveCache(section, key, value);
-                    return value;
+                    return regKey.GetValue(key, defaultValue)?.ToString();
                 }
             }
         }
@@ -84,7 +75,6 @@ namespace FileIOHelper.Helpers
                 using (var regKey = _baseKey.CreateSubKey($"{_registryPath}\\{section}"))
                 {
                     regKey?.SetValue(key, value);
-                    DeleteCacheKey(section, key);
                 }
             }
         }
@@ -98,14 +88,6 @@ namespace FileIOHelper.Helpers
 
             lock (_lock)
             {
-                if (_cache.TryGetValue(section, out var sectionCache))
-                {
-                    if (sectionCache.Count > 0)
-                    {
-                        return sectionCache;
-                    }
-                }
-
                 using (var regKey = _baseKey.OpenSubKey($"{_registryPath}\\{section}"))
                 {
                     if (regKey == null)
@@ -118,7 +100,6 @@ namespace FileIOHelper.Helpers
                     {
                         var value = regKey.GetValue(valueName)?.ToString() ?? string.Empty;
                         values.Add(valueName, value);
-                        SaveCache(section, valueName, value);
                     }
                     
                     return values;
@@ -141,8 +122,6 @@ namespace FileIOHelper.Helpers
                     {
                         regKey?.SetValue(pair.Key, pair.Value);
                     }
-
-                    DeleteCacheKey(section);
                 }
             }
         }
@@ -214,77 +193,6 @@ namespace FileIOHelper.Helpers
                         throw new UnauthorizedAccessException("No read permission or path does not exist.");
                     }
                 }
-            }
-
-            return true;
-        }
-        
-        /// <summary>
-        /// 캐시에 저장
-        /// </summary>
-        /// <param name="section"></param>
-        /// <param name="key"></param>
-        /// <param name="value"></param>
-        private void SaveCache(string section, string key, string value)
-        {
-            if (!_cache.TryGetValue(section, out var sectionCache))
-            {
-                sectionCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                _cache.Add(section, sectionCache);
-            }
-            
-            sectionCache[key] = value;
-        }
-        
-        /// <summary>
-        /// 캐시에서 불러오기
-        /// </summary>
-        /// <param name="section"></param>
-        /// <param name="key"></param>
-        /// <returns></returns>
-        private string LoadCache(string section, string key)
-        {
-            if (_cache.TryGetValue(section, out var sectionCache))
-            {
-                if (sectionCache.TryGetValue(key, out var value))
-                {
-                    return value;
-                }
-            }
-            
-            return null;
-        }
-        
-        /// <summary>
-        /// 캐시에서 특정 키 혹은 섹션 삭제
-        /// </summary>
-        /// <param name="section"></param>
-        /// <param name="key">null일 경우 해당 섹션 삭제</param>
-        /// <returns></returns>
-        private bool DeleteCacheKey(string section, string key = null)
-        {
-            if (key == null)
-            {
-                return _cache.Remove(section);
-            }
-            
-            if (_cache.TryGetValue(section, out var sectionCache))
-            {
-                return sectionCache.Remove(key);
-            }
-            
-            return false;
-        }
-        
-        /// <summary>
-        /// 캐시 초기화
-        /// </summary>
-        /// <returns></returns>
-        private bool ClearCache()
-        {
-            lock (_lock)
-            {
-                _cache.Clear();
             }
 
             return true;
