@@ -3,10 +3,32 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <Authors>Jay9011</Authors>
+    <GeneratePackageOnBuild>False</GeneratePackageOnBuild>
+    <Title>$(AssemblyName)</Title>
+    <AssemblyVersion>$(VersionPrefix)</AssemblyVersion>
+    <FileVersion>$(VersionPrefix)</FileVersion>
+    <Version>1.0.0-beta</Version>
+    <Company>SECUiDEA</Company>
+    <Description>ini와 registry에 데이터를 읽고 쓸수 있게 해주는 도구</Description>
+    <PackageReadmeFile>ReadMe.md</PackageReadmeFile>
+    <RepositoryUrl>http://192.168.0.39/FileIOHelper.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>ini, registry 작성 기능</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Win32.Registry" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Win32.Registry" Version="[4.0.0,)" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="ReadMe.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+	<Target Name="PushNuGetPackage" AfterTargets="Pack">
+		<Exec Command="dotnet nuget push $(PackageOutputPath)$(AssemblyName).$(Version).nupkg --source Local" />
+	</Target>
 
 </Project>

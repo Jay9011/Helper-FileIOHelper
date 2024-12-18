@@ -53,10 +53,25 @@ namespace FileIOHelper.Helpers
             {
                 return;
             }
+
+            var dictionary = Path.GetDirectoryName(_filePath);
             
             lock (_lock)
             {
-                WritePrivateProfileString(section, key, value, _filePath);
+                try
+                {
+                    if (!string.IsNullOrEmpty(dictionary) && !Directory.Exists(dictionary))
+                    {
+                        Directory.CreateDirectory(dictionary);
+                    }
+                
+                    WritePrivateProfileString(section, key, value, _filePath);
+                }
+                catch (Exception e)
+                {
+                    throw new IOException("Failed to write ini file.", e);
+                }
+                
                 DeleteCacheKey(section, key);
             }
         }
