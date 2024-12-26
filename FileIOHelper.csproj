@@ -7,7 +7,7 @@
     <Title>$(AssemblyName)</Title>
     <AssemblyVersion>$(VersionPrefix)</AssemblyVersion>
     <FileVersion>$(VersionPrefix)</FileVersion>
-    <Version>1.1.0</Version>
+    <Version>1.1.1</Version>
     <Company>SECUiDEA</Company>
     <Description>ini와 registry에 데이터를 읽고 쓸수 있게 해주는 도구</Description>
     <PackageReadmeFile>ReadMe.md</PackageReadmeFile>

@@ -5,7 +5,7 @@ using System.Text;
 
 namespace FileIOHelper.Helpers
 {
-    internal class LogFileHelper : IIOHelper
+    public class LogFileHelper : IIOHelper
     {
         private readonly string _filePath;
         private readonly object _lock = new object();
