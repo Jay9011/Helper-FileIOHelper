@@ -8,6 +8,8 @@ namespace FileIOHelper
     {
         IniFile,
         Registry,
+        TxtFile,
+        LogFile
     }
     public class IOHelperFactory
     {
@@ -19,6 +21,10 @@ namespace FileIOHelper
                     return new IniFileHelper(path);
                 case IOType.Registry:
                     return new RegistryHelper(path, hive);
+                case IOType.TxtFile:
+                    return new TxtFileHelper(path);
+                case IOType.LogFile:
+                    return new LogFileHelper(path);
                 default:
                     throw new ArgumentException("Not supported IO type", nameof(type));
             }
